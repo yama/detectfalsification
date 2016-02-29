@@ -1,0 +1,11 @@
+<table>
+<tr>
+<td>
+<form action="[+site_url+]" method="post">
+パスワード
+<input name="password" type="password" style="width:120px;" />
+<input type="submit" value="ログイン" />
+</form>
+</td>
+</tr>
+</table>

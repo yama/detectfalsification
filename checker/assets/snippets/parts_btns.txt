@@ -1,0 +1,17 @@
+<table>
+<tr>
+[+btn_check+]
+<td>
+<div class="icon">
+<a href="index.php?action=snapshot"><img src="assets/images/snapshot.png" /></a>
+<a href="index.php?action=snapshot">スナップショット更新</a>
+</div>
+</td>
+<td>
+<div class="icon">
+<a href="index.php?action=logout"><img src="assets/images/logout.png" /></a>
+<a href="index.php?action=logout">ログアウト</a>
+</div>
+</td>
+</tr>
+</table>

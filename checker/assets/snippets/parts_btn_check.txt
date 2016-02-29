@@ -1,0 +1,6 @@
+<td>
+<div class="icon">
+<a href="index.php?action=check"><img src="assets/images/check.png" /></a>
+<a href="index.php?action=check">改竄チェック</a>
+</div>
+</td>

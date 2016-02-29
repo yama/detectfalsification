@@ -16,7 +16,6 @@ $excludes[] = '\.zip$';
 $excludes[] = '^pdf_fonts$';
 $excludes[] = '^snapshot\.txt';
 $excludes[] = '^cache$';
-$excludes[] = '^pma$';
 $excludes[] = '^\.svn';
 $excludes[] = '^CVS$';
 $excludes[] = '^\#.*\#$';

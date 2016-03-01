@@ -6,7 +6,7 @@ class SNAPSHOT
     var $target_dir;
     var $excludes;
     var $password;
-    var $site_url;
+    var $tool_url;
     var $use_cron;
     var $admin_email;
     var $version;
@@ -17,13 +17,13 @@ class SNAPSHOT
         $pathinfo = explode('/',$_SERVER['SCRIPT_NAME']);
         array_pop($pathinfo);
         $scheme = !isset($_SERVER['HTTPS']) ? 'http://' : 'https://';
-        $this->site_url = $scheme . $_SERVER['HTTP_HOST'] . join('/', $pathinfo) . '/';
+        $this->tool_url = $scheme . $_SERVER['HTTP_HOST'] . join('/', $pathinfo) . '/';
         session_start();
         header("Content-type: text/html; charset=utf-8");
         if(function_exists('date_default_timezone_set')) date_default_timezone_set($timezone);
         mb_detect_order('SJIS-win,EUCJP-win,UTF-8,JIS,ASCII');
         $this->root_path     = rtrim(str_replace('\\','/', dirname(__FILE__)), '/');
-        $this->snapshot_file = $this->set_snapshot_txt($snapshot_txt);
+        $this->snapshot_file = $this->root_path . "/{$snapshot_txt}";
         $this->target_dir    = $this->set_target_dir($target_dir);
         $this->excludes      = $excludes;
         $this->password      = $password;
@@ -33,56 +33,58 @@ class SNAPSHOT
     
     function run()
     {
-        $this->login();
+        $this->msg = $this->getMsgFromSession();
+        
+        if(isset($_POST['password']))
+        {
+            $this->login();
+            $this->redirectTop();
+            exit;
+        }
+        
+        if(!$this->isLoggedIn())
+        {
+            echo $this->showLoginForm();
+            exit;
+        }
+        
         if(isset($_REQUEST['action'])) $action = $_REQUEST['action'];
         else                           $action = '';
         
         switch($action)
         {
             case 'check':
-                if($this->isLoggedIn())
-                {
-                    $_SESSION['msg'] = $this->check_snapshot();
-                }
-                else $_SESSION['msg'] = 'ログインしていません。';
-                header('Location: ' . $this->site_url);
+                $_SESSION['msg'] = $this->check_snapshot();
+                $this->redirectTop();
                 break;
             case 'snapshot':
-                if($this->isLoggedIn())
-                {
-                    $_SESSION['msg'] = $this->make_snapshot('snapshot');
-                }
-                else $_SESSION['msg'] = 'ログインしていません。';
-                header('Location: ' . $this->site_url);
+                $_SESSION['msg'] = $this->make_snapshot('put');
+                $this->redirectTop();
                 break;
             case 'download':
-                if($this->isLoggedIn())
-                {
-                    $_SESSION['msg'] = $this->make_snapshot('download');
-                }
-                else $_SESSION['msg'] = 'ログインしていません。';
-                header('Location: ' . $this->site_url);
+                $_SESSION['msg'] = $this->make_snapshot('download');
+                $this->redirectTop();
                 break;
             case 'logout':
                 unset($_SESSION['status']);
-                $_SESSION['msg'] = 'ログアウトしました。';
-                header('Location: ' . $this->site_url);
+                $_SESSION['msg'] = '<p class="ok">ログアウトしました。</p>';
+                $this->redirectTop();
                 break;
             case 'cron':
                 if($this->use_cron!=='yes')
                 {
                     $_SESSION['msg'] = 'cron利用は無効に設定されています。';
-                    header('Location: ' . $this->site_url);
+                    $this->redirectTop();
                 }
                 elseif(empty($this->admin_email))
                 {
                     $_SESSION['msg'] = '送信先メールアドレスが設定されていません。';
-                    header('Location: ' . $this->site_url);
+                    $this->redirectTop();
                 }
                 else
                 {
                     $report = $this->check_snapshot();
-                    $report = $this->convert_text($report);
+                    $report = strip_tags($report);
                     $date = date('Y-m-d H:i:s');
                     $ua = (isset($_SERVER['HTTP_USER_AGENT'])) ? htmlspecialchars($_SERVER['HTTP_USER_AGENT']) : '-';
                     $rs = $this->send_report($report,$date,$ua);
@@ -91,39 +93,44 @@ class SNAPSHOT
                 }
                 break;
             default:
-                if($this->isLoggedIn())
+                if(!is_writable($this->snapshot_file))
                 {
-                    if(!is_writable($this->snapshot_file))
-                    {
-                        $msg = $this->snapshot_file . ' に書き込み権限を与えてください。';
-                    }
-                    elseif(filesize($this->snapshot_file) < 5)
-                    {
-                        $msg = '<p class="ng">最初に現時点のスナップショットを記録してください。</p>';
-                    }
-                    else
-                    {
-                        $msg = '操作を選んでください。環境によっては数十秒かかることがありますが、表示が変わるまでお待ちください。';
-                        $timestamp = date('Y-m-d H:i:s ',filemtime($this->snapshot_file));
-                        $msg .= '<br />スナップショットの日付：' . $timestamp;
-                    }
+                    $msg = $this->snapshot_file . ' に書き込み権限を与えてください。';
+                }
+                elseif(filesize($this->snapshot_file) < 5)
+                {
+                    $msg = '<p class="ng">最初に現時点のスナップショットを記録してください。</p>';
                 }
                 else
-                    $msg = 'ログインしてください。';
-                
-                if(isset($_SESSION['msg']) && $_SESSION['msg']!=='')
                 {
-                    $msg = $_SESSION['msg'];
-                    unset($_SESSION['msg']);
+                    $msg = '操作を選んでください。環境によっては数十秒かかることがありますが、表示が変わるまでお待ちください。';
+                    $timestamp = date('Y-m-d H:i:s ',filemtime($this->snapshot_file));
+                    $msg .= '<br />スナップショットの日付：' . $timestamp;
                 }
         }
         
         $tpl = $this->getChunk('template_default.html');
         $ph['content'] = $this->get_chunk();
-        $ph['msg'] = $msg;
+        $ph['msg']     = $this->msg;
         echo $this->parseText($tpl, $ph);
     }
     
+    function getMsgFromSession()
+    {
+        if(isset($_SESSION['msg']) && $_SESSION['msg']!=='')
+        {
+            $msg = $_SESSION['msg'];
+            unset($_SESSION['msg']);
+        }
+        else $msg = '';
+        return $msg;
+    }
+    
+    function redirectTop()
+    {
+        header('Location: ' . $this->tool_url);
+        exit;
+    }
     function isLoggedIn()
     {
         return (isset($_SESSION['status']) && $_SESSION['status']=='online');
@@ -158,46 +165,30 @@ class SNAPSHOT
         return ($rs!==false) ? '改竄チェックレポートを送信しました。' : '送信に失敗しました。';
     }
     
-    function convert_text($src)
-    {
-        return strip_tags($src);
-    }
-    
     function login()
     {
         if(isset($_POST['password']) && $_POST['password'] == $this->password)
         {
             $_SESSION['status'] = 'online';
-            header('Location: ' . $this->site_url);
-            exit;
+            $_SESSION['msg'] = '<p class="ok">ログインしました。</p>';
         }
         elseif(isset($_POST['password']) && $_POST['password'] !== $this->password)
-        {
             $_SESSION['msg'] = '<p class="ng">パスワードが違います。</p>';
-        }
+        else
+            $_SESSION['msg'] = '<p class="ng">ログインしていません。</p>';
     }
     
     function get_chunk()
     {
-        $ph = array();
-        
-        if($this->isLoggedIn())
-        {
-            $ph['btn_check'] = (4 < filesize($this->snapshot_file)) ? $this->getChunk('parts_btn_check.txt') : '';
-            $tpl = $this->parseText($this->getChunk('parts_btns.txt'), $ph);
-        }
-        else
-        {
-            $tpl = $this->parseText($this->getChunk('parts_loginform.txt'),array('site_url'=>$this->site_url));
-        }
+        $ph['btn_check'] = (4 < filesize($this->snapshot_file)) ? $this->getChunk('parts_btn_check.txt') : '';
+        $tpl = $this->parseText($this->getChunk('parts_btns.txt'), $ph);
         return $tpl;
     }
-    
-    function set_snapshot_txt($filename)
-    {
-        $path = $this->root_path . "/{$filename}";
-        $this->snapshot_file = $path;
-        return $path;
+    function showLoginForm() {
+        $ph['content'] = $this->parseText($this->getChunk('parts_loginform.txt'),array('tool_url'=>$this->tool_url));
+        $ph['msg']     = $this->msg;
+        $tpl = $this->getChunk('template_default.html');
+        return $this->parseText($tpl,$ph);
     }
     
     function set_target_dir($target_dir='')
@@ -250,17 +241,15 @@ class SNAPSHOT
         else     return '<h2>検査結果</h2>' . "\n" . '<p class="ok">問題ありません。</p>';
     }
     
-    function make_snapshot($mode)
+    function make_snapshot($mode='put')
     {
         $output = '';
         $msg = '';
         
-        $excludes = $this->excludes;
-        
-        $tmp = $this->get_recursive_file_list($this->target_dir, $excludes);
+        $tmp = $this->get_recursive_file_list($this->target_dir);
         if(count($tmp) <= 1 )
         {
-            echo 'ありません';
+            echo 'ファイルがありません';
             return false;
         }
         
@@ -273,30 +262,31 @@ class SNAPSHOT
             $line[] = $md5sum . '-:-' . $file;
         }
         $output = join("\n",$line);
-        if($mode=='download')
-        {
-            header('Pragma: public');
-            header('Expires: 0');
-            header('Cache-Control: must-revalidate, post-check=0, pre-check=0');
-            header('Cache-Control: private',false);
-            header('Content-Description: File Transfer');
-            header('Content-Type: text/plain');
-            header('Content-Disposition: attachment; filename="checksum.dat"' );
-            header('Content-Transfer-Encoding: binary');
-            header('Content-Length: ' . strlen($output));
-            echo $output;
-            exit();
-        }
-        elseif($mode=='snapshot')
-        {
-            $rs = file_put_contents($this->snapshot_file, $output);
-            if($rs!==false) $msg = '<p class="ok">スナップショットを更新しました。</p>';
-            else $msg ='<p class="ng">スナップショットを更新できませんでした。</p>';
-        }
+        
+        if($mode=='download') $this->transferFile($output);
+        elseif($mode!=='put') return;
+        
+        $rs = file_put_contents($this->snapshot_file, $output);
+        if($rs) $msg = '<p class="ok">スナップショットを更新しました。</p>';
+        else    $msg ='<p class="ng">スナップショットを更新できませんでした。パーミッションを確認してください。</p>';
         return $msg;
     }
     
-    function get_recursive_file_list($path , $excludes, $depth = 0 )
+    function transferFile($text)
+    {
+        header('Pragma: public');
+        header('Expires: 0');
+        header('Cache-Control: must-revalidate, post-check=0, pre-check=0');
+        header('Cache-Control: private',false);
+        header('Content-Description: File Transfer');
+        header('Content-Type: text/plain');
+        header('Content-Disposition: attachment; filename="checksum.dat"' );
+        header('Content-Transfer-Encoding: binary');
+        header('Content-Length: ' . strlen($text));
+        exit($text);
+    }
+    
+    function get_recursive_file_list($path, $depth = 0 )
     {
         $path = rtrim($path,'/') . '/';
         $file_list = array ();
@@ -304,8 +294,8 @@ class SNAPSHOT
         $files = scandir($path);
         foreach($files as $file_name)
         {
-            if($file_name == '.' || $file_name == '..')            continue;
-            if($this->filespec_is_excluded($file_name, $excludes)) continue;
+            if($file_name == '.' || $file_name == '..')                  continue;
+            if($this->isExcludedFile($file_name)) continue;
             
             $file_path = $path . $file_name;
             if(is_file($file_path))
@@ -314,24 +304,26 @@ class SNAPSHOT
             }
             elseif(0 <= $depth && is_dir($file_path))
             {
-                $result  = $this->get_recursive_file_list($file_path . '/' , $excludes , $depth + 1 );
+                $result  = $this->get_recursive_file_list("{$file_path}/", $depth + 1 );
                 $file_list = array_merge($file_list , $result);
             }
         }
+        
         if($depth == 0) natcasesort($file_list);
+        
         return($file_list);
     }
     
-    function filespec_is_excluded($file, $excludes)
+    function isExcludedFile($file)
     {
         // strip the path from the file
-        if( empty($excludes)) return false;
-        foreach($excludes as $excl)
+        if( empty($this->excludes)) return false;
+        
+        $file_name = end(explode('/',$file));
+        foreach($this->excludes as $excl)
         {
-            if(@preg_match('/' . $excl . '/i', end(explode('/',$file))))
-            {
+            if(@preg_match("/{$excl}/i", $file_name))
                 return true;
-            }
         }
         return false;
     }
